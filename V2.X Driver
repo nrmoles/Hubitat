@@ -1,0 +1,93 @@
+/**
+ *  Google Home Assistant Relay
+ *
+ *  Copyright 2018 Daniel Ogorchock
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ *  in compliance with the License. You may obtain a copy of the License at:
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
+ *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
+ *  for the specific language governing permissions and limitations under the License.
+ *
+ *  Change History:
+ *
+ *    Date        Who            What
+ *    ----        ---            ----
+ *    2018-06-22  Dan Ogorchock  Original Creation
+ *    2018-07-01  Dan Ogorchock  Add support for Custom Commands - prefix string with [CC] to POST /custom?command= instead of /customBroadcast?text=
+ *    2018-07-02  Dan Ogorchock  Add support for Confirmation - prefix sting with [CCC] to POST /custom?command=<your command>&converse=true
+ *    2018-10-18  Dan Ogorchock  Reduced debug logging
+ *    2018-11-22  Nathan Moles  Modified hostUri to include a URL directory as needed to accomdate driver V2+ at https://github.com/greghesp/assistant-relay
+ *
+ *    Credit goes to Greg Hesp's work on the SmartThings platform as a starting point for this very simplified version!
+ */
+metadata {
+	definition (name: "Google Home Assistant Relay", namespace: "ogiewon", author: "Dan Ogorchock") {
+        capability "Speech Synthesis"
+    	capability "Notification"
+	}
+
+	preferences {
+		input(name: "deviceIP", type: "string", title:"Device IP Address", description: "Enter IP Address of your Assistant Relay Server", required: true, displayDuringSetup: true)
+		input(name: "devicePort", type: "string", title:"Device Port", description: "Enter Port of your Assistant Relay Server (defaults to 3000)", defaultValue: "3000", required: true, displayDuringSetup: true)
+		input(name: "deviceDir", type: "string" , title: "Device Directory", description: "For V2 and Later, Include the Assistant Relay Server Directory ", defaultValue: "/Assistant", displayDuringSetup: true)
+	}
+}
+
+def parse(String description) {
+    //log.debug "Parsing ${description}"
+}
+
+def speak(message) {
+    def command = "/customBroadcast?text="
+    def suffix = ""
+    
+    if(message.startsWith("[CC]")){ 
+      command = "/custom?command="
+      message = message.minus("[CC]")
+    }  
+    else if(message.startsWith("[CCC]")){ 
+      command = "/custom?command="
+      suffix = "&converse=true"
+      message = message.minus("[CCC]")
+    } 
+    
+    def text = URLEncoder.encode(message, "UTF-8");
+    
+    if (suffix == "") {
+        //log.debug "${command}${text}"
+        httpPostJSON("${command}${text}")  
+    }
+    else {
+        //log.debug "${command}${text}${suffix}"
+        httpPostJSON("${command}${text}${suffix}")
+    }
+}
+
+def deviceNotification(message) {
+    speak(message)
+}
+
+def httpPostJSON(path) {
+	if(deviceDir.isEmpty){
+		// if no device directory use V1 destination
+		def hostUri = "${deviceIP}:${devicePort}"
+	}
+	else {
+		// if device directory exists use v2 destination
+		def hostUri = "${deviceIP}:${devicePort}${deviceDir}"
+	}
+    //log.debug "Sending command ${path} to ${hostUri}"
+    def result = new hubitat.device.HubAction(
+            method: "POST",
+            path: path,
+            headers: [
+                HOST: hostUri
+            ]
+    )
+    //log.debug "Request: ${result.requestId}"
+    return result
+}
